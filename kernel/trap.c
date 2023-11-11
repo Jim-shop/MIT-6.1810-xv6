@@ -78,7 +78,14 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
+  {
+    if (p->alarm.period != 0 && ++p->alarm.count == p->alarm.period) // `==` instead of `>=` to avoid re-entry
+    {
+      p->alarm.trapframe = *p->trapframe;
+      p->trapframe->epc = (uint64)p->alarm.handler;
+    }
     yield();
+  }
 
   usertrapret();
 }
@@ -219,3 +226,20 @@ devintr()
   }
 }
 
+uint64
+sys_sigalarm(void)
+{
+  struct proc *p = myproc();
+  argint(0, &p->alarm.period);
+  argaddr(1, (uint64 *)&p->alarm.handler);
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  p->alarm.count = 0; // reset CNT here to avoid re-entry handler
+  *p->trapframe = p->alarm.trapframe;
+  return p->trapframe->a0; // preserve a0
+}
