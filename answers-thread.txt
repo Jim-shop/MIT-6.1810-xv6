@@ -1,0 +1,24 @@
+Q: thread_switch needs to save/restore only the callee-save registers. Why?
+A: The caller-save registers are saved in stack automatically by compiler generated code if we perform a function call, like `thread_yield()` when we switch thread.
+
+Q: To test your code it might be helpful to single step through your thread_switch using riscv64-linux-gnu-gdb. You can get started in this way:
+    (gdb) file user/_uthread
+    Reading symbols from user/_uthread...
+    (gdb) b uthread.c:60
+This sets a breakpoint at line 60 of uthread.c. The breakpoint may (or may not) be triggered before you even run uthread. How could that happen?
+A: GDB's breakpoint implementation is base on watching `pc` register, which may be mistrigger when using two different page table (like `init`'s page table and `sh`'s page table).
+
+Q: Why are there missing keys with 2 threads, but not with 1 thread? Identify a sequence of events with 2 threads that can lead to a key being missing. Submit your sequence with a short explanation in answers-thread.txt.
+A: When two thread insert into same bucket and call insert at the barely same time, then finish in the reverse of the calling order, then the first thread's insertion will be overwrite by the second thread. Sequence is like:
+    [THREAD 1]                      [THREAD 2]
+    struct entry *e = malloc(sizeof(struct entry));
+    e->key = key;
+    e->value = value;
+    e->next = n;
+                                    struct entry *e = malloc(sizeof(struct entry));
+    *p = e;
+                                    e->key = key;
+                                    e->value = value;
+                                    e->next = n;
+                                    *p = e;
+
