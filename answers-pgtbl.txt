@@ -1,0 +1,3 @@
+Q: Which other xv6 system call(s) could be made faster using this shared page? Explain how.
+A: pipe, read, write, exec, fstat, ...any syscall using `copyin` and `copyout` can be speed up.
+
