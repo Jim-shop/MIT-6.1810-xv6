@@ -314,8 +314,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
-  uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -323,14 +321,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    inc_ref_cnt((void *)pa);
+    if (*pte & PTE_W) {
+      *pte &= ~PTE_W;
+      *pte |= PTE_COW;
     }
+    if (mappages(new, i, PGSIZE, pa, PTE_FLAGS(*pte)) != 0)
+      goto err;
   }
   return 0;
 
@@ -338,6 +335,36 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+
+// handle CoW request when writing
+int
+uvmcow(pagetable_t pagetable, uint64 va)
+{
+  va = PGROUNDDOWN(va);
+  if (va >= MAXVA)
+    goto err;
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0 || (*pte & PTE_COW) == 0)
+    goto err;
+  
+  void *newpage = kalloc();
+  if (newpage == 0)
+    goto err;
+  void *pa = (void *)PTE2PA(*pte);
+  memmove(newpage, pa, PGSIZE);
+  int newflag = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+  uvmunmap(pagetable, va, 1, 1);
+  if (mappages(pagetable, va, PGSIZE, (uint64)newpage, newflag) != 0) {
+    kfree(newpage);
+    goto err;
+  }
+  return 0;
+
+err:
+  printf("uvmcow: error\n");
+  return -1;
+}
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -366,8 +393,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+      return -1;
+    if((*pte & PTE_W) == 0 && uvmcow(pagetable, va0) != 0)
       return -1;
     pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
