@@ -146,6 +146,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  for (int i = 0; i < NVMA; i++)
+    p->vma[i].len = 0;
+
   return p;
 }
 
@@ -288,6 +291,13 @@ fork(void)
     return -1;
   }
 
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vma[i].len != 0) {
+      np->vma[i] = p->vma[i];
+      filedup(p->vma[i].f);
+    }
+  }
+
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -350,6 +360,15 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *vma = p->vma + i;
+    uvmunmap(p->pagetable, vma->addr, vma->len / PGSIZE, 1);
+    if (vma->len != 0 && vma->f != 0) {
+      vma->len = 0;
+      fileclose(vma->f);
+    }
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

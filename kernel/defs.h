@@ -244,3 +244,6 @@ int             sockread(struct sock *, uint64, int);
 int             sockwrite(struct sock *, uint64, int);
 void            sockrecvudp(struct mbuf*, uint32, uint16, uint16);
 #endif
+
+// sysfile.c
+int             vma_load(struct proc *p, uint64 va);

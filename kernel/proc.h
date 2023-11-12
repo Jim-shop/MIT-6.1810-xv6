@@ -104,4 +104,12 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct vma {
+    uint64 start_addr, addr;
+    int len;
+    int perm;
+    int flags;
+    struct file *f;
+    int offset;
+  } vma[NVMA];
 };
